@@ -1,0 +1,261 @@
+services:
+  # Apache Kafka for message streaming
+  kafka:
+    image: apache/kafka:latest
+    hostname: kafka
+    container_name: unified-kafka
+    ports:
+      - "9092:9092"         # Host port for external access
+      - "29092:29092"       # Internal listener for inter-container communication
+      - "29093:29093"       # Controller listener
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_NODE_ID: 1
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_LISTENERS: PLAINTEXT://kafka:29092,CONTROLLER://kafka:29093,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    volumes:
+      - ./infrastructure/kafka/logs:/tmp/kraft-combined-logs
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  # Redis for caching and session management
+  redis:
+    image: redis:7-alpine
+    container_name: unified-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./infrastructure/redis/data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Document Processing Service
+  document-processor:
+    build:
+      context: ./services/document-processor
+      dockerfile: Dockerfile
+    container_name: document-processor
+    restart: unless-stopped
+    command: python -m uvicorn app.main:app --host 0.0.0.0 --port 8001
+    ports:
+      - "8001:8001"
+    environment:
+      # Cloud Supabase Configuration
+      DATABASE_URL: ${DATABASE_URL}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY}
+      # Kafka Configuration
+      KAFKA_BROKER: kafka:29092
+      # Redis Configuration
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # Service Configuration
+      OCR_SERVICE_PORT: 8001
+      OCR_SERVICE_HOST: 0.0.0.0
+      OCR_MAX_FILE_SIZE: ${OCR_MAX_FILE_SIZE:-10485760}
+      OCR_ALLOWED_EXTENSIONS: ${OCR_ALLOWED_EXTENSIONS:-pdf,png,jpg,jpeg}
+      # Application Settings
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./uploads:/tmp/uploads
+
+  # Document Verification Service
+  verification-service:
+    build:
+      context: ./services/verification-service
+      dockerfile: Dockerfile
+    container_name: verification-service
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    environment:
+      # Cloud Supabase Configuration
+      DATABASE_URL: ${DATABASE_URL}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY}
+      # Kafka Configuration
+      KAFKA_BROKER: kafka:29092
+      # Redis Configuration
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # Service Configuration
+      KYC_SERVICE_PORT: 8002
+      KYC_SERVICE_HOST: 0.0.0.0
+      KYC_MAX_FILE_SIZE: ${KYC_MAX_FILE_SIZE:-10485760}
+      KYC_ALLOWED_EXTENSIONS: ${KYC_ALLOWED_EXTENSIONS:-pdf,png,jpg,jpeg}
+      # Application Settings
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./uploads:/tmp/uploads
+
+  # Your System Message Router (FastAPI)
+  message-router:
+    build:
+      context: ./services/message-router
+      dockerfile: Dockerfile
+    container_name: message-router
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      KAFKA_BROKER: kafka:29092
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  # Forms Processing API Service
+  forms-api:
+    build:
+      context: ./services/forms-api
+      dockerfile: Dockerfile
+    container_name: forms-api
+    restart: unless-stopped
+    ports:
+      - "8003:8000"
+    environment:
+      KAFKA_BROKER: kafka:29092
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  # Topic Bridge Service (translates between topic naming conventions)
+  topic-bridge:
+    build:
+      context: ./services/topic-bridge
+      dockerfile: Dockerfile
+    container_name: topic-bridge
+    restart: unless-stopped
+    environment:
+      KAFKA_BROKER: kafka:29092
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  # System Monitoring Service (monitors all topics)
+  monitoring-service:
+    build:
+      context: ./consumers/monitoring-service
+      dockerfile: Dockerfile
+    container_name: monitoring-service
+    restart: unless-stopped
+    environment:
+      KAFKA_BROKER: kafka:29092
+    depends_on:
+      kafka:
+        condition: service_healthy
+    stdin_open: true
+    tty: true
+
+  # Dashboard Notification Service (WebSocket for real-time updates)
+  dashboard-notifier:
+    build:
+      context: ./services/dashboard-notifier
+      dockerfile: Dockerfile
+    container_name: dashboard-notifier
+    restart: unless-stopped
+    ports:
+      - "8004:8004"
+    environment:
+      KAFKA_BROKER: kafka:29092
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  # User Forms & Document Upload API
+  user-forms-api:
+    build:
+      context: ./services/user-forms-api
+      dockerfile: Dockerfile
+    container_name: user-forms-api
+    restart: unless-stopped
+    ports:
+      - "8005:8005"
+    environment:
+      KAFKA_BROKER: kafka:29092
+    depends_on:
+      kafka:
+        condition: service_healthy
+      document-processor:
+        condition: service_started
+    volumes:
+      - ./uploads:/app/uploads
+
+  # Forms Processing Listener
+  forms-listener:
+    build:
+      context: ./consumers/forms-listener
+      dockerfile: Dockerfile
+    container_name: forms-listener
+    restart: unless-stopped
+    environment:
+      KAFKA_BROKER: kafka:29092
+    depends_on:
+      kafka:
+        condition: service_healthy
+    stdin_open: true
+    tty: true
+
+  # Command Center Connector (WebSocket + Kafka)
+  command-center-connector:
+    build:
+      context: ./services/command-center-connector
+      dockerfile: Dockerfile
+    container_name: command-center-connector
+    restart: unless-stopped
+    ports:
+      - "8006:8006"
+    environment:
+      KAFKA_BROKER: kafka:29092
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  kafka_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  default:
+    name: unified-agents-network
+    external: true

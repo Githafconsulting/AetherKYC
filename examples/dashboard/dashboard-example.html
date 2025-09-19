@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Processing Dashboard</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 6px;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #333;
+        }
+        .stat-label {
+            color: #666;
+            margin-top: 5px;
+        }
+        .notifications {
+            padding: 20px;
+        }
+        .notification {
+            margin: 10px 0;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid;
+            animation: slideIn 0.3s ease-out;
+        }
+        .notification.success {
+            border-left-color: #28a745;
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .notification.warning {
+            border-left-color: #ffc107;
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .notification.error {
+            border-left-color: #dc3545;
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .notification.info {
+            border-left-color: #17a2b8;
+            background-color: #d1ecf1;
+            color: #0c5460;
+        }
+        .notification-header {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .notification-time {
+            font-size: 0.8em;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+        .connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px;
+            border-radius: 4px;
+            color: white;
+            font-weight: bold;
+        }
+        .connected {
+            background-color: #28a745;
+        }
+        .disconnected {
+            background-color: #dc3545;
+        }
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(100%);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        .test-button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px;
+        }
+        .test-button:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="connection-status" id="connectionStatus">Disconnected</div>
+
+    <div class="container">
+        <div class="header">
+            <h1>📄 Document Processing Dashboard</h1>
+            <p>Real-time monitoring of document processing and verification</p>
+            <button class="test-button" onclick="sendTestNotification()">Send Test Notification</button>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number" id="totalProcessed">0</div>
+                <div class="stat-label">Total Processed</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="successfulVerifications">0</div>
+                <div class="stat-label">Successful Verifications</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="pendingReview">0</div>
+                <div class="stat-label">Pending Review</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="systemAlerts">0</div>
+                <div class="stat-label">System Alerts</div>
+            </div>
+        </div>
+
+        <div class="notifications">
+            <h2>🔔 Real-time Notifications</h2>
+            <div id="notificationsList">
+                <div class="notification info">
+                    <div class="notification-header">Dashboard Connected</div>
+                    <div>Waiting for real-time updates...</div>
+                    <div class="notification-time">Just now</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class DashboardManager {
+            constructor() {
+                this.ws = null;
+                this.clientId = 'dashboard_' + Math.random().toString(36).substring(7);
+                this.stats = {
+                    totalProcessed: 0,
+                    successfulVerifications: 0,
+                    pendingReview: 0,
+                    systemAlerts: 0
+                };
+                this.maxNotifications = 50;
+                this.connect();
+            }
+
+            connect() {
+                const wsUrl = `ws://localhost:8004/ws/dashboard/${this.clientId}`;
+                console.log('Connecting to:', wsUrl);
+
+                this.ws = new WebSocket(wsUrl);
+
+                this.ws.onopen = () => {
+                    console.log('Connected to dashboard service');
+                    this.updateConnectionStatus(true);
+                    this.sendPing();
+                };
+
+                this.ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        this.handleMessage(data);
+                    } catch (error) {
+                        console.error('Error parsing message:', error);
+                    }
+                };
+
+                this.ws.onclose = () => {
+                    console.log('Disconnected from dashboard service');
+                    this.updateConnectionStatus(false);
+                    // Attempt to reconnect after 3 seconds
+                    setTimeout(() => this.connect(), 3000);
+                };
+
+                this.ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    this.updateConnectionStatus(false);
+                };
+            }
+
+            handleMessage(data) {
+                console.log('Received message:', data);
+
+                if (data.type === 'pong') {
+                    // Keep-alive response
+                    return;
+                }
+
+                // Update statistics
+                this.updateStatistics(data);
+
+                // Add notification
+                this.addNotification(data);
+            }
+
+            updateStatistics(data) {
+                const topic = data.topic;
+                const level = data.level;
+
+                // Update counters based on message type
+                if (topic === 'ocr-completed' || topic?.includes('verification') || topic?.includes('forms')) {
+                    this.stats.totalProcessed++;
+                }
+
+                if (data.details?.verification_result === 'PASSED') {
+                    this.stats.successfulVerifications++;
+                } else if (data.details?.verification_result === 'MANUAL_REVIEW_REQUIRED') {
+                    this.stats.pendingReview++;
+                }
+
+                if (level === 'error' || topic === 'kyc-alerts') {
+                    this.stats.systemAlerts++;
+                }
+
+                // Update UI
+                document.getElementById('totalProcessed').textContent = this.stats.totalProcessed;
+                document.getElementById('successfulVerifications').textContent = this.stats.successfulVerifications;
+                document.getElementById('pendingReview').textContent = this.stats.pendingReview;
+                document.getElementById('systemAlerts').textContent = this.stats.systemAlerts;
+            }
+
+            addNotification(data) {
+                const notificationsList = document.getElementById('notificationsList');
+
+                // Create notification element
+                const notification = document.createElement('div');
+                notification.className = `notification ${data.level || 'info'}`;
+
+                const title = data.title || 'System Update';
+                const message = data.message || 'No message provided';
+                const time = new Date(data.timestamp || Date.now()).toLocaleTimeString();
+
+                let detailsHtml = '';
+                if (data.details) {
+                    detailsHtml = '<div style="font-size: 0.9em; margin-top: 8px; opacity: 0.8;">';
+                    if (data.details.document_type) {
+                        detailsHtml += `Document: ${data.details.document_type} | `;
+                    }
+                    if (data.details.confidence) {
+                        detailsHtml += `Confidence: ${data.details.confidence}% | `;
+                    }
+                    if (data.details.verification_result) {
+                        detailsHtml += `Result: ${data.details.verification_result}`;
+                    }
+                    detailsHtml += '</div>';
+                }
+
+                notification.innerHTML = `
+                    <div class="notification-header">${title}</div>
+                    <div>${message}</div>
+                    ${detailsHtml}
+                    <div class="notification-time">${time}</div>
+                `;
+
+                // Add to top of list
+                notificationsList.insertBefore(notification, notificationsList.firstChild);
+
+                // Remove old notifications if too many
+                while (notificationsList.children.length > this.maxNotifications) {
+                    notificationsList.removeChild(notificationsList.lastChild);
+                }
+            }
+
+            updateConnectionStatus(connected) {
+                const statusElement = document.getElementById('connectionStatus');
+                statusElement.textContent = connected ? 'Connected' : 'Disconnected';
+                statusElement.className = `connection-status ${connected ? 'connected' : 'disconnected'}`;
+            }
+
+            sendPing() {
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({ type: 'ping' }));
+                }
+                // Send ping every 30 seconds
+                setTimeout(() => this.sendPing(), 30000);
+            }
+
+            sendTestNotification() {
+                fetch('http://localhost:8004/send-test-notification', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Test notification sent:', data);
+                })
+                .catch(error => {
+                    console.error('Error sending test notification:', error);
+                });
+            }
+        }
+
+        // Global function for test button
+        function sendTestNotification() {
+            dashboard.sendTestNotification();
+        }
+
+        // Initialize dashboard when page loads
+        let dashboard;
+        document.addEventListener('DOMContentLoaded', () => {
+            dashboard = new DashboardManager();
+        });
+    </script>
+</body>
+</html>

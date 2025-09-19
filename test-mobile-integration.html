@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile App Backend Integration Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px 5px;
+            transition: transform 0.2s;
+        }
+        button:hover {
+            transform: scale(1.05);
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border: 1px solid #f5c6cb;
+        }
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border: 1px solid #bee5eb;
+        }
+        pre {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 14px;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-online { background: #28a745; }
+        .status-offline { background: #dc3545; }
+        .status-pending { background: #ffc107; }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin: 15px 0;
+        }
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Mobile App Backend Integration Test</h1>
+
+        <div class="test-section">
+            <h2>📡 Service Health Check</h2>
+            <button onclick="checkAllServices()">Check All Services</button>
+            <div id="service-status"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>📝 Submit Application (Mobile App Flow)</h2>
+            <div class="grid">
+                <input type="text" id="firstName" placeholder="First Name" value="John">
+                <input type="text" id="lastName" placeholder="Last Name" value="Doe">
+                <input type="email" id="email" placeholder="Email" value="john.doe@example.com">
+                <input type="tel" id="phone" placeholder="Phone" value="+1234567890">
+                <input type="date" id="dateOfBirth" value="1990-01-01">
+                <input type="text" id="nationality" placeholder="Nationality" value="US">
+                <input type="text" id="streetAddress" placeholder="Street Address" value="123 Main St">
+                <input type="text" id="city" placeholder="City" value="New York">
+                <input type="text" id="state" placeholder="State" value="NY">
+                <input type="text" id="postalCode" placeholder="Postal Code" value="10001">
+                <input type="text" id="country" placeholder="Country" value="USA">
+                <select id="documentType">
+                    <option value="passport">Passport</option>
+                    <option value="national-id">National ID</option>
+                    <option value="drivers-license">Driver's License</option>
+                </select>
+                <input type="text" id="documentNumber" placeholder="Document Number" value="A12345678">
+            </div>
+            <button onclick="submitApplication()">Submit Application</button>
+            <div id="submit-result"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>📄 Upload Document</h2>
+            <input type="text" id="applicationId" placeholder="Application ID (from submission)">
+            <input type="file" id="documentFile" accept=".pdf,.jpg,.jpeg,.png">
+            <button onclick="uploadDocument()">Upload Document</button>
+            <div id="upload-result"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>📊 Application Status</h2>
+            <input type="text" id="statusAppId" placeholder="Application ID">
+            <button onclick="checkStatus()">Check Status</button>
+            <div id="status-result"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>🔄 Test Complete Workflow</h2>
+            <button onclick="testCompleteWorkflow()">Run Complete Test</button>
+            <div id="workflow-result"></div>
+        </div>
+    </div>
+
+    <script>
+        const BACKEND_URL = 'http://localhost:8005';
+        const COMMAND_CENTER_URL = 'http://localhost:8006';
+
+        let currentApplicationId = null;
+
+        async function checkAllServices() {
+            const statusDiv = document.getElementById('service-status');
+            statusDiv.innerHTML = '<div class="info">Checking services...</div>';
+
+            const services = [
+                { name: 'User Forms API', url: `${BACKEND_URL}/health` },
+                { name: 'Document Processor', url: 'http://localhost:8001/health' },
+                { name: 'Verification Service', url: 'http://localhost:8002/health' },
+                { name: 'Command Center', url: `${COMMAND_CENTER_URL}/api/agents/status` },
+                { name: 'Message Router', url: 'http://localhost:8000/health' },
+                { name: 'Dashboard Notifier', url: 'http://localhost:8004/health' }
+            ];
+
+            let html = '<div class="grid">';
+
+            for (const service of services) {
+                try {
+                    const response = await fetch(service.url);
+                    const isHealthy = response.ok;
+                    html += `
+                        <div class="${isHealthy ? 'success' : 'error'}">
+                            <span class="status-indicator status-${isHealthy ? 'online' : 'offline'}"></span>
+                            <strong>${service.name}:</strong> ${isHealthy ? 'Online' : 'Offline'}
+                        </div>
+                    `;
+                } catch (error) {
+                    html += `
+                        <div class="error">
+                            <span class="status-indicator status-offline"></span>
+                            <strong>${service.name}:</strong> Connection failed
+                        </div>
+                    `;
+                }
+            }
+
+            html += '</div>';
+            statusDiv.innerHTML = html;
+        }
+
+        async function submitApplication() {
+            const resultDiv = document.getElementById('submit-result');
+            resultDiv.innerHTML = '<div class="info">Submitting application...</div>';
+
+            const formData = {
+                firstName: document.getElementById('firstName').value,
+                lastName: document.getElementById('lastName').value,
+                email: document.getElementById('email').value,
+                phone: document.getElementById('phone').value,
+                dateOfBirth: document.getElementById('dateOfBirth').value,
+                nationality: document.getElementById('nationality').value,
+                streetAddress: document.getElementById('streetAddress').value,
+                city: document.getElementById('city').value,
+                state: document.getElementById('state').value,
+                postalCode: document.getElementById('postalCode').value,
+                country: document.getElementById('country').value,
+                documentType: document.getElementById('documentType').value,
+                documentNumber: document.getElementById('documentNumber').value
+            };
+
+            // Convert to API format (matching mobile app's userFormsService)
+            const applicationData = {
+                personal_info: {
+                    first_name: formData.firstName,
+                    last_name: formData.lastName,
+                    email: formData.email,
+                    phone: formData.phone,
+                    date_of_birth: formData.dateOfBirth,
+                    nationality: formData.nationality,
+                    address_line1: formData.streetAddress,
+                    city: formData.city,
+                    state_province: formData.state,
+                    postal_code: formData.postalCode,
+                    country: formData.country
+                },
+                documents: [{
+                    document_type: formData.documentType === 'national-id' ? 'id_card' :
+                                  formData.documentType === 'drivers-license' ? 'driver_license' :
+                                  'passport',
+                    document_number: formData.documentNumber,
+                    issuing_country: formData.nationality
+                }],
+                application_type: 'kyc_verification',
+                additional_notes: 'Test submission from integration test'
+            };
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/submit-application`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(applicationData)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                currentApplicationId = result.application_id;
+                document.getElementById('applicationId').value = currentApplicationId;
+                document.getElementById('statusAppId').value = currentApplicationId;
+
+                resultDiv.innerHTML = `
+                    <div class="success">
+                        <h3>✅ Application Submitted Successfully!</h3>
+                        <p><strong>Application ID:</strong> ${result.application_id}</p>
+                        <p><strong>Status:</strong> ${result.status}</p>
+                        <p><strong>Processing Time:</strong> ${result.estimated_processing_time}</p>
+                        <details>
+                            <summary>Full Response</summary>
+                            <pre>${JSON.stringify(result, null, 2)}</pre>
+                        </details>
+                    </div>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <h3>❌ Submission Failed</h3>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        async function uploadDocument() {
+            const resultDiv = document.getElementById('upload-result');
+            const applicationId = document.getElementById('applicationId').value;
+            const fileInput = document.getElementById('documentFile');
+
+            if (!applicationId) {
+                resultDiv.innerHTML = '<div class="error">Please enter an Application ID</div>';
+                return;
+            }
+
+            if (!fileInput.files[0]) {
+                resultDiv.innerHTML = '<div class="error">Please select a document to upload</div>';
+                return;
+            }
+
+            resultDiv.innerHTML = '<div class="info">Uploading document...</div>';
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('notes', 'Test document upload');
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/upload-document/${applicationId}/passport`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+
+                resultDiv.innerHTML = `
+                    <div class="success">
+                        <h3>✅ Document Uploaded Successfully!</h3>
+                        <p><strong>Filename:</strong> ${result.filename}</p>
+                        <p><strong>Status:</strong> ${result.status}</p>
+                        <details>
+                            <summary>Full Response</summary>
+                            <pre>${JSON.stringify(result, null, 2)}</pre>
+                        </details>
+                    </div>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <h3>❌ Upload Failed</h3>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        async function checkStatus() {
+            const resultDiv = document.getElementById('status-result');
+            const applicationId = document.getElementById('statusAppId').value;
+
+            if (!applicationId) {
+                resultDiv.innerHTML = '<div class="error">Please enter an Application ID</div>';
+                return;
+            }
+
+            resultDiv.innerHTML = '<div class="info">Checking status...</div>';
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/application/${applicationId}`);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+
+                resultDiv.innerHTML = `
+                    <div class="success">
+                        <h3>📊 Application Status</h3>
+                        <p><strong>Status:</strong> ${result.status}</p>
+                        <p><strong>Submitted:</strong> ${new Date(result.submission_timestamp).toLocaleString()}</p>
+                        <p><strong>Documents Uploaded:</strong> ${Object.keys(result.document_uploads).length}</p>
+                        <details>
+                            <summary>Processing History</summary>
+                            <pre>${JSON.stringify(result.processing_history, null, 2)}</pre>
+                        </details>
+                    </div>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <h3>❌ Status Check Failed</h3>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        async function testCompleteWorkflow() {
+            const resultDiv = document.getElementById('workflow-result');
+            resultDiv.innerHTML = '<div class="info">Running complete workflow test...</div>';
+
+            let html = '<h3>🔄 Complete Workflow Test</h3>';
+
+            try {
+                // Step 1: Submit application
+                html += '<div class="info">Step 1: Submitting application...</div>';
+                await submitApplication();
+
+                if (!currentApplicationId) {
+                    throw new Error('Failed to get application ID');
+                }
+
+                html += `<div class="success">✅ Application submitted: ${currentApplicationId}</div>`;
+
+                // Step 2: Wait a moment for processing
+                html += '<div class="info">Step 2: Waiting for initial processing...</div>';
+                await new Promise(resolve => setTimeout(resolve, 2000));
+
+                // Step 3: Check status
+                html += '<div class="info">Step 3: Checking application status...</div>';
+                document.getElementById('statusAppId').value = currentApplicationId;
+                await checkStatus();
+
+                html += '<div class="success">✅ Status checked successfully</div>';
+
+                // Step 4: Check agent status
+                html += '<div class="info">Step 4: Checking agent processing status...</div>';
+                const agentResponse = await fetch(`${COMMAND_CENTER_URL}/api/agents/status`);
+                if (agentResponse.ok) {
+                    const agents = await agentResponse.json();
+                    html += `<div class="success">✅ Agents active: ${agents.length} agents processing</div>`;
+                }
+
+                html += `
+                    <div class="success">
+                        <h4>🎉 Workflow Test Complete!</h4>
+                        <p>Application ID: ${currentApplicationId}</p>
+                        <p>All steps completed successfully. The mobile app backend integration is working!</p>
+                    </div>
+                `;
+
+            } catch (error) {
+                html += `
+                    <div class="error">
+                        <h4>❌ Workflow Test Failed</h4>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+
+            resultDiv.innerHTML = html;
+        }
+
+        // Check services on page load
+        window.onload = () => {
+            checkAllServices();
+        };
+    </script>
+</body>
+</html>

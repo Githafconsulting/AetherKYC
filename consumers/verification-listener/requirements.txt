@@ -1,0 +1,2 @@
+confluent-kafka>=2.11.1
+colorama>=0.4.6
